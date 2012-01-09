@@ -86,8 +86,7 @@ module ActiveMerchant
         response = ssl_get(endpoint, headers)
         parse_tracking_response(response)
       rescue ActiveMerchant::ResponseError => e
-        puts e.response.body
-        puts e.message
+        response = parse_error_response(e.response.body, e.message)
       end
       
       def print_label(origin, destination, options = {})
@@ -106,7 +105,14 @@ module ActiveMerchant
         "Basic %s" % ActiveSupport::Base64.encode64("#{@options[:api_key]}:#{@options[:secret]}")
       end
       
-      def parse_invalid_tracking_response(response, message)
+      def parse_error_response(response, error_message)
+        xml = REXML::Document.new(response)
+        messages = []
+        root_node = xml.elements['messages']
+        root_node.elements.each('message') do |message|
+          messages << message.get_text('description').to_s
+        end
+        message = messages.join(",")
         CPPWSTrackingResponse.new(false, message, {}, {})
       end
       

@@ -19,14 +19,12 @@ class CanadaPostPwsTest < Test::Unit::TestCase
 
   # tracking info
   
-  def test_real  # actually hit Canada Post API
-    pin = "1371134583769924" # valid test #
-    
-    response = @cp.find_tracking_info(pin, {})
-    p response
-  end
-  
-  
+  # def test_real  # actually hit Canada Post API
+  #   pin = "1371134583769924" # valid test #
+  #   
+  #   response = @cp.find_tracking_info(pin, {})
+  #   p response
+  # end
   
   def test_find_tracking_info_with_valid_pin
     pin = '1371134583769923'
@@ -34,7 +32,7 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     @response = xml_fixture('canadapost_pws/tracking_details_en')
     @cp.expects(:ssl_get).with(endpoint, anything).returns(@response)
   
-    response = @cp.find_tracking_info(pin, {})
+    response = @cp.find_tracking_info(pin)
     assert response.is_a?(CPPWSTrackingResponse)  
   end
   
@@ -44,17 +42,31 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     @response = xml_fixture('canadapost_pws/dnc_tracking_details_en')
     @cp.expects(:ssl_get).with(endpoint, anything).returns(@response)
   
-    response = @cp.find_tracking_info(dnc, {})
+    response = @cp.find_tracking_info(dnc)
     assert response.is_a?(CPPWSTrackingResponse)
   end
   
   def test_find_tracking_info_with_invalid_format_pin_returns_error
     pin = '123'
     @cp.expects(:ssl_get).never
-    assert_raises ResponseError do
-      response = @cp.find_tracking_info(pin, {})
+    exception = assert_raises ResponseError do
+      response = @cp.find_tracking_info(pin)
     end
+    p exception.message
   end
+  
+  
+  def test_fidn_tracking_info_when_pin_doesnt_exist
+    pin = '1371134583769924'
+    @cp.expects(:ssl_get).returns()
+    
+    exception = assert_raises ResponseError do
+      @cp.find_tracking_info(pin)
+    end
+    assert_equal "No Pin History", exception.message
+  end
+  
+  
 
   # when number is pin, but pin does not exist, returns back message (returns 404, body should contain error info)
   # when number is valid dnc format, but dnc does not exist, returns back message
@@ -76,16 +88,8 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   # end
   # 
   
-  # parse_tracking_info
-  # test events
-  # test expected-delivery-date
-  # test service-name
-  # test changed date, and change reason
-  # test event name, date, time, location
-  # test event timestamp
-
   def test_parse_tracking_response
-    @response = xml_fixture('canadapost_pws/tracking_info')
+    @response = xml_fixture('canadapost_pws/tracking_details_en')
     @cp.expects(:ssl_get).returns(@response)
     
     response = @cp.find_tracking_info('1371134583769923', {})
@@ -104,7 +108,7 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   end
 
   def test_parse_tracking_response_shipment_events
-    @response = xml_fixture('canadapost_pws/tracking_info')
+    @response = xml_fixture('canadapost_pws/tracking_details_en')
     @cp.expects(:ssl_get).returns(@response)
     
     response = @cp.find_tracking_info('1371134583769923', {})
@@ -139,11 +143,11 @@ class CanadaPostPwsTest < Test::Unit::TestCase
 
   # rating
 
-  def test_rates
-    opts = {:customer_number => "0008035576"}
-    ca_dest = Location.new(:country => 'CA', :province => 'MB', :city => "Winnipeg", :postal_code => "R3L0K9")
-    @cp.find_rates(@home, ca_dest, [@pkg1], opts)
-  end
+  # def test_rates
+  #   opts = {:customer_number => "0008035576"}
+  #   ca_dest = Location.new(:country => 'CA', :province => 'MB', :city => "Winnipeg", :postal_code => "R3L0K9")
+  #   @cp.find_rates(@home, ca_dest, [@pkg1], opts)
+  # end
   
 
   
