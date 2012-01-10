@@ -3,6 +3,8 @@ require 'cgi'
 module ActiveMerchant
   module Shipping
     
+    class InvalidPinFormatError < StandardError;end
+      
     class CanadaPostPWS < Carrier
 
       @@name = "Canada Post PWS"
@@ -34,37 +36,13 @@ module ActiveMerchant
           'Authorization'   => encoded_authorization,
           'Accept-Language' => language
         }
-        xml = XmlNode.new('mailing-scenario', :xmlns => "http://www.canadapost.ca/ws/ship/rate") do |root_node|
-          root_node << XmlNode.new("customer-number", options[:customer_number])
-          root_node << XmlNode.new("parcel-characteristics") do |pc|
-            weight = line_items.reduce(0){|acc, li| acc + li.weight}
-            pc << XmlNode.new("weight", weight)
-          end
-          root_node << XmlNode.new("origin-postal-code", origin.postal_code)
-          root_node << XmlNode.new("destination") do |dest|
-            dest << XmlNode.new("domestic") do |dom|
-              dom << XmlNode.new("postal-code", destination.postal_code)
-            end
-          end
-        end
         
-        data = xml.to_s
-        
-        response = ssl_post(endpoint, data, headers)
-        
+        request_body = build_rates_request(origin, destination, line_items, options)
+        response = ssl_post(endpoint, request_body, headers)
         parse_rates_response(response, origin, destination)
+      rescue ActiveMerchant::Shipping::ResponseError => e
+        parse_rates_error_response(e.response.body)
       end
-      
-      # def tracking_summary(pin, options ={})
-      #   endpoint = URL + "vis/track/pin/%s/summary" % pin
-      #   headers = {
-      #     'Accept'          => "application/vnd.cpc.track+xml",
-      #     'Authorization'   => encoded_authorization,
-      #     'Accept-language' => language
-      #   }
-      #   response = ssl_get(endpoint, headers)
-      #   p response
-      # end
       
       def find_tracking_info(pin, options = {})
         endpoint = case pin.length
@@ -73,7 +51,7 @@ module ActiveMerchant
           when 15
             URL + "vis/track/dnc/%s/detail" % pin
           else
-            CPPWSTrackingResponse.new(false, "Invalid PIN format", {}, {})
+            raise InvalidPinFormatError
           end
         
         # set required header
@@ -85,8 +63,10 @@ module ActiveMerchant
         # send request & build and parse response
         response = ssl_get(endpoint, headers)
         parse_tracking_response(response)
-      rescue ActiveMerchant::ResponseError => e
-        response = parse_error_response(e.response.body, e.message)
+      rescue ActiveMerchant::Shipping::ResponseError => e
+        parse_tracking_error_response(e.response.body)
+      rescue InvalidPinFormatError => e
+        CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {})
       end
       
       def print_label(origin, destination, options = {})
@@ -105,7 +85,7 @@ module ActiveMerchant
         "Basic %s" % ActiveSupport::Base64.encode64("#{@options[:api_key]}:#{@options[:secret]}")
       end
       
-      def parse_error_response(response, error_message)
+      def parse_tracking_error_response(response)
         xml = REXML::Document.new(response)
         messages = []
         root_node = xml.elements['messages']
@@ -114,30 +94,6 @@ module ActiveMerchant
         end
         message = messages.join(",")
         CPPWSTrackingResponse.new(false, message, {}, {})
-      end
-      
-      
-      def parse_rates_response(response, origin, destination)
-        xml = REXML::Document.new(response)
-        
-        rates = [] 
-        
-        root_node = xml.elements['price-quotes']
-        
-        root_node.elements.each('price-quote') do |quote|
-          service_name  = quote.get_text("service-name").to_s
-          service_code  = quote.get_text("service-code").to_s
-          due           = quote.elements['price-details'].get_text("due").to_s
-          expected_date = quote.elements['service-standard'].get_text("expected-delivery-date").to_s
-          
-          rates << RateEstimate.new(origin, destination, @@name, service_name,
-            :service_code => service_code,
-            :total_price => due,
-            :currency => 'CAD',
-            :delivery_range => [expected_date, expected_date]
-            )
-        end
-        CPPWSRatesResponse.new(true, "", {}, :rates => rates)
       end
       
       def parse_tracking_response(response)
@@ -180,6 +136,118 @@ module ActiveMerchant
         }
         
         CPPWSTrackingResponse.new(true, "", {}, options)
+      end
+      
+      def build_rates_request(origin, destination, line_items = [], options = {})
+        customer_number  = options[:customer_number]
+        contract_number  = options[:contract_number]
+        orig_postal_code = origin.postal_code
+        shipping_options = options[:shipping_options] || []
+
+        xml = XmlNode.new('mailing-scenario', :xmlns => "http://www.canadapost.ca/ws/ship/rate") do |root_node|
+          root_node << XmlNode.new("customer-number", customer_number)
+          root_node << XmlNode.new("contract-number", contract_number) if contract_number
+          root_node << XmlNode.new("origin-postal-code", orig_postal_code)
+          root_node << build_parcel_characteristics(line_items)
+          root_node << build_destination_node(destination)
+        end
+        xml.to_s
+      end
+
+      def build_rates_options(options = {}, line_items = [])
+        XmlNode.new('options') do |el|
+          if options[:cod] && options[:cod_amount]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'COD')
+              opt << XmlNode.new('option-amount', options[:cod_amount])
+            end
+          end
+
+          if options[:insurance] && options[:insurance_amount]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'COV')
+              opt << XmlNode.new('option-amount', options[:insurance_amount])
+            end
+          end
+
+          if options[:signature_required]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'SO')
+            end
+          end
+
+          [:pa18, :pa19, :hfp, :dns, :lad].each do |code|
+            if options[code]
+              el << XmlNode.new('option') do |opt|
+                opt << XmlNode.new('option-code', code.to_s.upcase)
+              end
+            end
+          end
+        end
+      end
+
+      def build_parcel_characteristics(line_items = [])
+        weight = line_items.sum {|li| li.kilograms }.to_f
+        XmlNode.new('parcel-characteristics') do |el|
+          el << XmlNode.new('weight', "%#2.3f" % weight)
+          el << XmlNode.new('mailing-tube', true) if line_items.any?(&:tube?)
+          el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
+          el << XmlNode.new('unpackaged', true) if line_items.any?(&:unpackaged?)
+        end
+      end
+
+      def build_destination_node(destination)
+        if destination.country_code == 'CA'
+          XmlNode.new("destination") do |dest|
+            dest << XmlNode.new("domestic") do |dom|
+              dom << XmlNode.new('postal-code', destination.postal_code)  
+            end
+          end
+        elsif destination.country_code == 'US'
+          XmlNode.new('destination') do |dest|
+            dest << XmlNode.new('united-states') do |dom|
+              dom << XmlNode.new('zip-code', destination.postal_code)
+            end
+          end
+        else
+          XmlNode.new('destination') do |dest|
+            dest << XmlNode.new('international') do |dom|
+              dom << XmlNode.new('country-code', destination.country_code)
+            end
+          end
+        end
+      end
+
+      
+      def parse_rates_response(response, origin, destination)
+        xml = REXML::Document.new(response)
+        
+        rates = [] 
+        
+        # for each quote
+          # quote = extract_price_quote
+          # rates << Rate.new(quote)
+          
+        
+        root_node = xml.elements['price-quotes']
+        
+        root_node.elements.each('price-quote') do |quote|
+          service_name  = quote.get_text("service-name").to_s
+          service_code  = quote.get_text("service-code").to_s
+          due           = quote.elements['price-details'].get_text("due").to_s
+          expected_date = quote.elements['service-standard'].get_text("expected-delivery-date").to_s
+          
+          rates << RateEstimate.new(origin, destination, @@name, service_name,
+            :service_code => service_code,
+            :total_price => due,
+            :currency => 'CAD',
+            :delivery_range => [expected_date, expected_date]
+            )
+        end
+        CPPWSRatesResponse.new(true, "", {}, :rates => rates)
+      end
+      
+      def parse_rates_error_response()
       end
       
     end

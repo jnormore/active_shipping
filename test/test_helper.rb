@@ -8,6 +8,7 @@ Bundler.setup
 require 'test/unit'
 require 'active_shipping'
 require 'mocha'
+require 'nokogiri'
 
 
 XmlNode # trigger autorequire
@@ -35,7 +36,6 @@ module Test
       def load_fixtures
         file = File.exists?(LOCAL_CREDENTIALS) ? LOCAL_CREDENTIALS : DEFAULT_CREDENTIALS
         yaml_data = YAML.load(File.read(file))
-        p yaml_data
         model_fixtures = Dir.glob(File.join(MODEL_FIXTURES,'**','*.yml'))
         model_fixtures.each do |file|
           name = File.basename(file, '.yml')
