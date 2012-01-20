@@ -16,8 +16,6 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     @cp = CanadaPostPWS.new(login)
     @french_cp = CanadaPostPWS.new(login.merge(:language => 'fr'))
   end
-
-  # find_tracking_info
   
   # def test_real  # actually hit Canada Post API
   #   pin = "1371134583769924" # valid test #
@@ -25,7 +23,20 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   #   response = @cp.find_tracking_info(pin, {})
   #   p response
   # end
+
+  # def test_rates # HITS endpoint
+    # opts = {:customer_number => "0008035576"}
+    # ca_dest = Location.new(:country => 'CA', :province => 'BC', :city => "Vancouver", :postal_code => "V5J2T2")
+    # response =  @cp.find_rates(@home, ca_dest, [@pkg1], opts)
+    # p response
+    # response.rates.each do |rate| 
+    #   p rate.package_rates
+    # end
+  # end
   
+
+  # find_tracking_info
+
   def test_find_tracking_info_with_valid_pin
     pin = '1371134583769923'
     endpoint = CanadaPostPWS::URL + "vis/track/pin/%s/detail" % pin
@@ -122,16 +133,7 @@ class CanadaPostPwsTest < Test::Unit::TestCase
 
 
   # rating
-
-  def test_rates
-    # opts = {:customer_number => "0008035576"}
-    # ca_dest = Location.new(:country => 'CA', :province => 'BC', :city => "Vancouver", :postal_code => "V5J2T2")
-    # @cp.find_rates(@home, ca_dest, [@pkg1], opts)
-  end
   
-  # test contact number 
-
-
   # build_rates_options
 
   def test_build_rates_options_no_options
@@ -259,11 +261,6 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   end
 
 
-  # test_rating_info
-  # test_rating_info_with_invalid_source_returns_error
-  # test_rating_info_with_m
-  
-
   def test_parse_rates_response
     @response = xml_fixture('canadapost_pws/rates_info')
     @cp.expects(:ssl_post).returns(@response)
@@ -276,6 +273,28 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     assert_equal "DOM.EP", rate.service_code
     assert_equal "Expedited Parcel", rate.service_name
     assert_equal rate.delivery_range, [DateTime.parse("18 Jan 2012"),DateTime.parse("18 Jan 2012")]
+  end
+
+  def test_parse_error_rates_response
+    body = xml_fixture('canadapost_pws/rates_info_error')
+    exception = assert_raises ActiveMerchant::Shipping::ResponseError do
+      @cp.send(:parse_rates_error_response, body)
+    end
+
+    assert_equal "You cannot mail on behalf of the requested customer.", exception.message
+  end
+
+  def test_find_rates_returns_error
+    body = xml_fixture('canadapost_pws/rates_info_error')
+    
+    CPPWSRatesResponse.any_instance.stubs(:body).returns(body)
+    @cp.expects(:ssl_post).raises(ActiveMerchant::Shipping::ResponseError)
+    ActiveMerchant::Shipping::ResponseError.any_instance.expects(:response).returns(mock(:body => body))
+    @cp.expects(:parse_rates_error_response).raises(ActiveMerchant::Shipping::ResponseError)
+    
+    assert_raises ActiveMerchant::Shipping::ResponseError do
+      @cp.find_rates(@home, @dest, [], {})
+    end
   end
 
   

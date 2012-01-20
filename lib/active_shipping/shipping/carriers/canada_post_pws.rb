@@ -40,7 +40,7 @@ module ActiveMerchant
         request_body = build_rates_request(origin, destination, line_items, options)
         response = ssl_post(endpoint, request_body, headers)
         parse_rates_response(response, origin, destination)
-      rescue ActiveMerchant::Shipping::ResponseError => e
+      rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         parse_rates_error_response(e.response.body)
       end
       
@@ -63,7 +63,7 @@ module ActiveMerchant
         # send request & build and parse response
         response = ssl_get(endpoint, headers)
         parse_tracking_response(response)
-      rescue ActiveMerchant::Shipping::ResponseError => e
+      rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         parse_tracking_error_response(e.response.body)
       rescue InvalidPinFormatError => e
         CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {})
@@ -221,35 +221,39 @@ module ActiveMerchant
       
       def parse_rates_response(response, origin, destination)
         xml = REXML::Document.new(response)
-        
-        rates = [] 
-        
-        # for each quote
-          # quote = extract_price_quote
-          # rates << Rate.new(quote)
-          
-        
         root_node = xml.elements['price-quotes']
         
+        rates = [] 
         root_node.elements.each('price-quote') do |quote|
           service_name  = quote.get_text("service-name").to_s
           service_code  = quote.get_text("service-code").to_s
           due           = quote.elements['price-details'].get_text("due").to_s
-          expected_date = quote.elements['service-standard'].get_text("expected-delivery-date").to_s
-          
-          rates << RateEstimate.new(origin, destination, @@name, service_name,
+          if service = quote.elements['service-standard']
+            expected_date = service.get_text("expected-delivery-date").to_s
+          else
+            expected_date = nil
+          end
+          options = {
             :service_code => service_code,
             :total_price => due,
             :currency => 'CAD',
             :delivery_range => [expected_date, expected_date]
-            )
+          }
+          rates << RateEstimate.new(origin, destination, @@name, service_name, options)
         end
         CPPWSRatesResponse.new(true, "", {}, :rates => rates)
       end
       
-      def parse_rates_error_response()
+      def parse_rates_error_response(body)
+        xml = REXML::Document.new(body)
+        messages = []
+        root_node = xml.elements['messages']
+        root_node.elements.each('message') do |message|
+          messages << message.get_text('description').to_s
+        end
+        message = messages.join(",")
+        CPPWSRatesResponse.new(false, message, {}, {})
       end
-      
     end
     
     class CPPWSRatesResponse < RateResponse
