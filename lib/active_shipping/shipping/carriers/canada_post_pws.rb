@@ -3,13 +3,14 @@ require 'cgi'
 module ActiveMerchant
   module Shipping
     
-    class InvalidPinFormatError < StandardError;end
+    class InvalidPinFormatError < StandardError; end
+    class MissingCustomerNumberError < StandardError; end
       
     class CanadaPostPWS < Carrier
 
       @@name = "Canada Post PWS"
-      # URL = "https://ct.soa-gw.canadapost.ca/" # test environment
-      URL = "https://soa-gw.canadapost.ca/"    # production
+      URL = "https://ct.soa-gw.canadapost.ca/" # test environment
+      # URL = "https://soa-gw.canadapost.ca/"    # production
       
       Language = {
         'en' => 'en-CA',
@@ -54,7 +55,6 @@ module ActiveMerchant
             raise InvalidPinFormatError
           end
         
-        # set required header
         headers = {
           'Accept'          => "application/vnd.cpc.track+xml",
           'Authorization'   => encoded_authorization,
@@ -69,11 +69,46 @@ module ActiveMerchant
         CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {})
       end
       
-      def print_label(origin, destination, options = {})
+      def create_shipment(origin, destination, line_items = [], options = {})
+        raise MissingCustomerNumberError unless customer_number = options[:customer_number]
+
+        endpoint = URL + "rs/#{customer_number}/#{customer_number}/shipment"
+        headers = {
+          'Accept'          => "application/vnd.cpc.shipment+xml",
+          'Content-Type'    => "application/vnd.cpc.shipment+xml",
+          'Authorization'   => encoded_authorization,
+          'Accept-language' => language          
+        }
+
+        # build shipment request
+        # get response
+        # parse response
+        request_body = build_shipment_request(origin, destination, line_items, options)
+        
+        response = ssl_post(endpoint, request_body, headers)
+        puts response
+      rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
+        puts "Error #{e.response.body}"
+      rescue MissingCustomerNumberError => e
+        p "Error #{e}"
       end
       
-      def void_label(label_id, options = {})
+      def void_shipment(label_id, options = {})
+
       end
+
+      def regenerate_label(label_id, options = {})
+
+      end
+
+      def nearest_offices(origin, options = {})
+
+      end
+
+      def office_details(office_id, options = {})
+
+      end
+
       
       def maximum_weight
         Mass.new(30, :kilograms)
@@ -218,7 +253,78 @@ module ActiveMerchant
         end
       end
 
-      
+
+      def build_shipment_request(origin, destination, line_items = [], options = {})
+        xml = XmlNode.new('shipment', :xmlns => "http://www.canadapost.ca/ws/shipment") do |root_node|
+          # group-id
+          root_node << XmlNode.new('group-id', 'test')
+          root_node << XmlNode.new('requested-shipping-point', origin.postal_code)
+          root_node << XmlNode.new('delivery-spec') do |spec|
+            spec << XmlNode.new('service-code', options[:service])
+            spec << build_location_node('sender', origin)
+            spec << build_location_node('destination', destination)
+            spec << build_parcel_characteristics(line_items)
+            #spec << build_shipping_options(options)
+            #spec << build_notification_options(options)
+            spec << build_print_preference_options(options)
+            spec << build_shipping_preference_options(options)
+            #spec << build_shipping_references(options)
+            #spec << build_customs_options(options)
+              # skulist
+
+            spec << build_settlement_info(options)        
+          end
+          # return-spec
+              # return-recipient
+
+        end
+        xml.to_s
+      end
+
+      def build_print_preference_options(options)
+        XmlNode.new('print-preferences') do |node|
+          node << XmlNode.new('output-format', 'paper')
+          node << XmlNode.new('encoding', 'PDF')
+        end
+      end
+
+      def build_shipping_preference_options(options)
+        XmlNode.new('preferences') do |xml|
+          xml << XmlNode.new('show-packing-instructions', true)
+          xml << XmlNode.new('show-postage-rate', true)
+          xml << XmlNode.new('show-insured-value', true)
+        end
+      end
+
+      def build_location_node(label, location)
+        XmlNode.new(label) do |xml|
+          xml << XmlNode.new('name', location.name)
+          if label == 'sender'
+            xml << XmlNode.new('company', location.company || location.name)
+          else
+            xml << XmlNode.new('company', location.company) if location.company
+          end
+          xml << XmlNode.new('contact-phone', location.phone) if label == 'sender'
+          xml << XmlNode.new('address-details') do |addr|
+            addr << XmlNode.new('address-line-1', location.address1)
+            addr << XmlNode.new('address-line-2', [location.address2, location.address3].join(", ")) if !location.address2.blank? || !location.address3.blank?
+            addr << XmlNode.new('city', location.city)
+            addr << XmlNode.new('prov-state', location.province)
+            addr << XmlNode.new("country-code", location.country_code)
+            addr << XmlNode.new('postal-zip-code', location.postal_code)
+          end
+        end
+      end
+
+      def build_settlement_info(options)
+        XmlNode.new('settlement-info') do |xml|
+          # defaults to mailed-on-behalf-of
+          xml << XmlNode.new('contract-id', options[:customer_number])
+          xml << XmlNode.new('intended-method-of-payment', 'Account')  # need support for CC
+        end
+      end
+
+     
       def parse_rates_response(response, origin, destination)
         xml = REXML::Document.new(response)
         root_node = xml.elements['price-quotes']
@@ -280,160 +386,3 @@ module ActiveMerchant
     
   end
 end
-
-# sample tracking response
-# <?xml version="1.0" encoding="UTF-8"?>
-# <tracking-detail xmlns="http://www.canadapost.ca/ws/track">
-#   <pin>1371134583769923</pin>
-#   <active-exists>1</active-exists>
-#   <archive-exists/>
-#   <changed-expected-date>2011-02-11</changed-expected-date>
-#   <destination-postal-id>G1K4M7</destination-postal-id>
-#   <expected-delivery-date>2011-02-01</expected-delivery-date>
-#   <changed-expected-delivery-reason>Customer addressing error found; attempting to correct
-#       </changed-expected-delivery-reason>
-#   <mailed-by-customer-number>0001371134</mailed-by-customer-number>
-#   <mailed-on-behalf-of-customer-number>0001371134</mailed-on-behalf-of-customer-number>
-#   <original-pin/>
-#   <service-name>Xpresspost</service-name>
-#   <service-name-2>Xpresspost</service-name-2>
-#   <customer-ref-1>955-0398</customer-ref-1>
-#   <customer-ref-2/>
-#   <return-pin/>
-#   <signature-image-exists>true</signature-image-exists>
-#   <suppress-signature>false</suppress-signature>
-#   <delivery-options>
-#     <item>
-#       <delivery-option/>
-#       <delivery-option-description/>
-#     </item>
-#     <item>
-#       <delivery-option>CH_SGN_OPTION</delivery-option>
-#       <delivery-option-description>Signature Required</delivery-option-description>
-#     </item>
-#   </delivery-options>
-#   <significant-events>
-#     <occurrence>
-#       <event-identifier>1496</event-identifier>
-#       <event-date>2011-02-03</event-date>
-#       <event-time>11:59:59</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Item successfully delivered</event-description>
-#       <signatory-name/>
-#       <event-site>SAINTE-FOY</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>20</event-identifier>
-#       <event-date>2011-02-03</event-date>
-#       <event-time>11:59:59</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Signature image recorded for Online viewing</event-description>
-#       <signatory-name>HETU</signatory-name>
-#       <event-site>SAINTE-FOY</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>0174</event-identifier>
-#       <event-date>2011-02-03</event-date>
-#       <event-time>08:27:43</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Item out for delivery</event-description>
-#       <signatory-name/>
-#       <event-site>SAINTE-FOY</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>0100</event-identifier>
-#       <event-date>2011-02-02</event-date>
-#       <event-time>14:45:48</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Item processed at postal facility</event-description>
-#       <signatory-name/>
-#       <event-site>QUEBEC</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>0173</event-identifier>
-#       <event-date>2011-02-02</event-date>
-#       <event-time>06:19:57</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Customer addressing error found; attempting to correct.
-#             Possible delay</event-description>
-#       <signatory-name/>
-#       <event-site>QUEBEC</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>1496</event-identifier>
-#       <event-date>2011-02-01</event-date>
-#       <event-time>07:59:52</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Item successfully delivered</event-description>
-#       <signatory-name/>
-#       <event-site>QUEBEC</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>20</event-identifier>
-#       <event-date>2011-02-01</event-date>
-#       <event-time>07:59:52</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Signature image recorded for Online viewing</event-description>
-#       <signatory-name>R GREGOIRE</signatory-name>
-#       <event-site>QUEBEC</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>0500</event-identifier>
-#       <event-date>2011-02-01</event-date>
-#       <event-time>07:51:23</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Out for delivery</event-description>
-#       <signatory-name/>
-#       <event-site>QUEBEC</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>2300</event-identifier>
-#       <event-date>2011-01-31</event-date>
-#       <event-time>17:06:02</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Item picked up by Canada Post</event-description>
-#       <signatory-name/>
-#       <event-site>MONTREAL</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#     <occurrence>
-#       <event-identifier>3000</event-identifier>
-#       <event-date>2011-01-31</event-date>
-#       <event-time>14:34:57</event-time>
-#       <event-time-zone>EST</event-time-zone>
-#       <event-description>Order information received by Canada Post</event-description>
-#       <signatory-name/>
-#       <event-site>LACHINE</event-site>
-#       <event-province>QC</event-province>
-#       <event-retail-location-id/>
-#       <event-retail-name/>
-#     </occurrence>
-#   </significant-events>
-# </tracking-detail>
-
