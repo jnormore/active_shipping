@@ -61,7 +61,9 @@ module ActiveMerchant
         }
         
         request_body = build_rates_request(origin, destination, line_items, options)
+        p request_body
         response = ssl_post(endpoint, request_body, headers)
+        p response
         parse_rates_response(response, origin, destination)
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         parse_rates_error_response(e.response.body)
@@ -198,6 +200,8 @@ module ActiveMerchant
       end
       
       def build_rates_request(origin, destination, line_items = [], options = {})
+        origin = Location.new(origin)
+        destination = Location.new(destination)
         customer_number  = options[:customer_number]
         contract_number  = options[:contract_number]
         orig_postal_code = origin.postal_code
