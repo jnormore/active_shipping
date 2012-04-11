@@ -23,9 +23,9 @@ module ActiveMerchant
         "USA.XP"        => "Xpresspost USA",
         "INT.IP.AIR"    => "International Parcel Air",
         "INT.IP.SURF"   => "International Parcel Surface",
-        "INT.PW.ENV"    => "Priority Worldwide Envelope Int’l",
-        "INT.PW.PAK"    => "Priority Worldwide pak Int’l",
-        "INT.PW.PARCEL" => "Priority Worldwide parcel Int’l",
+        "INT.PW.ENV"    => "Priority Worldwide Envelope Int'l",
+        "INT.PW.PAK"    => "Priority Worldwide pak Int'l",
+        "INT.PW.PARCEL" => "Priority Worldwide parcel Int'l",
         "INT.SP.AIR"    => "Small Packet International Air",
         "INT.SP.SURF"   => "Small Packet International Surface"
       }
