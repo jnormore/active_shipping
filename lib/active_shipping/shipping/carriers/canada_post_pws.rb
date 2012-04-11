@@ -8,6 +8,28 @@ module ActiveMerchant
       
     class CanadaPostPWS < Carrier
 
+      SHIPPING_SERVICES = {
+        "DOM.RP"        => "Regular Parcel",
+        "DOM.EP"        => "Expedited Parcel",
+        "DOM.XP"        => "Xpresspost",
+        "DOM.PC"        => "Priority Next A.M.",
+        "DOM.LIB"       => "Library Books",
+        "USA.EP"        => "Expedited Parcel USA",
+        "USA.PW.ENV"    => "Priority Worldwide Envelope USA",
+        "USA.PW.PAK"    => "Priority Worldwide pak USA",
+        "USA.PW.PARCEL" => "Priority Worldwide Parcel USA",
+        "USA.SP.AIR"    => "Small Packet USA Air",
+        "USA.SP.SURF"   => "Small Packet USA Surface",
+        "USA.XP"        => "Xpresspost USA",
+        "INT.IP.AIR"    => "International Parcel Air",
+        "INT.IP.SURF"   => "International Parcel Surface",
+        "INT.PW.ENV"    => "Priority Worldwide Envelope Int’l",
+        "INT.PW.PAK"    => "Priority Worldwide pak Int’l",
+        "INT.PW.PARCEL" => "Priority Worldwide parcel Int’l",
+        "INT.SP.AIR"    => "Small Packet International Air",
+        "INT.SP.SURF"   => "Small Packet International Surface"
+      }
+
       @@name = "Canada Post PWS"
       URL = "https://ct.soa-gw.canadapost.ca/" # test environment
       # URL = "https://soa-gw.canadapost.ca/"    # production
@@ -81,12 +103,14 @@ module ActiveMerchant
         }
 
         # build shipment request
-        # get response
-        # parse response
         request_body = build_shipment_request(origin, destination, line_items, options)
         
+        # get response
         response = ssl_post(endpoint, request_body, headers)
         puts response
+
+        # parse response
+
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         puts "Error #{e.response.body}"
       rescue MissingCustomerNumberError => e
@@ -257,7 +281,7 @@ module ActiveMerchant
       def build_shipment_request(origin, destination, line_items = [], options = {})
         xml = XmlNode.new('shipment', :xmlns => "http://www.canadapost.ca/ws/shipment") do |root_node|
           # group-id
-          root_node << XmlNode.new('group-id', 'test')
+          root_node << build_groupid_node(options)
           root_node << XmlNode.new('requested-shipping-point', origin.postal_code)
           root_node << XmlNode.new('delivery-spec') do |spec|
             spec << XmlNode.new('service-code', options[:service])
@@ -271,14 +295,34 @@ module ActiveMerchant
             #spec << build_shipping_references(options)
             #spec << build_customs_options(options)
               # skulist
-
             spec << build_settlement_info(options)        
           end
-          # return-spec
-              # return-recipient
+          # TODO: return-spec
+          # TODO: return-recipient
 
         end
         xml.to_s
+      end
+
+      def build_groupid_node(options)
+        # need to generate a unique group id (based on date-merchant?)
+        XmlNode.new('group-id', 'test')
+      end
+
+      def build_shipping_options(options)
+        XmlNode.new('options') do |xml|
+          # to do
+        end
+      end
+
+      def build_notification_options(options)
+        return unless options[:notification_email]
+        XmlNode.new('notification') do |xml|
+          xml << XmlNode.new('email', options[:notification_email])
+          xml << XmlNode.new('on-shipment', true)
+          xml << XmlNode.new('on-shipment', true)
+          xml << XmlNode.new('on-shipment', true)
+        end
       end
 
       def build_print_preference_options(options)
@@ -295,6 +339,15 @@ module ActiveMerchant
           xml << XmlNode.new('show-insured-value', true)
         end
       end
+
+      def build_shipping_references(options)
+        # todo
+      end
+
+      def build_customs_options(options)
+        # todo
+      end
+
 
       def build_location_node(label, location)
         XmlNode.new(label) do |xml|
@@ -359,6 +412,12 @@ module ActiveMerchant
         end
         message = messages.join(",")
         CPPWSRatesResponse.new(false, message, {}, {})
+      end
+
+      def parse_shipping_response(response)
+      end
+
+      def parse_shipping_error_response(body)
       end
     end
     
