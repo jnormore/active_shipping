@@ -31,8 +31,8 @@ module ActiveMerchant
       }
 
       @@name = "Canada Post PWS"
-      URL = "https://ct.soa-gw.canadapost.ca/" # test environment
-      # URL = "https://soa-gw.canadapost.ca/"    # production
+      #URL = "https://ct.soa-gw.canadapost.ca/" # test environment
+      URL = "https://soa-gw.canadapost.ca/"    # production
       
       Language = {
         'en' => 'en-CA',
@@ -61,9 +61,7 @@ module ActiveMerchant
         }
         
         request_body = build_rates_request(origin, destination, line_items, options)
-        p request_body
         response = ssl_post(endpoint, request_body, headers)
-        p response
         parse_rates_response(response, origin, destination)
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         parse_rates_error_response(e.response.body)
