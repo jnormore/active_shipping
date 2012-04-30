@@ -12,8 +12,10 @@ module ActiveMerchant
         "DOM.RP"        => "Regular Parcel",
         "DOM.EP"        => "Expedited Parcel",
         "DOM.XP"        => "Xpresspost",
-        "DOM.PC"        => "Priority Next A.M.",
+        "DOM.XP.CERT"   => "Xpresspost Certified"
+        "DOM.PC"        => "Priority",
         "DOM.LIB"       => "Library Books",
+
         "USA.EP"        => "Expedited Parcel USA",
         "USA.PW.ENV"    => "Priority Worldwide Envelope USA",
         "USA.PW.PAK"    => "Priority Worldwide pak USA",
@@ -21,6 +23,8 @@ module ActiveMerchant
         "USA.SP.AIR"    => "Small Packet USA Air",
         "USA.SP.SURF"   => "Small Packet USA Surface",
         "USA.XP"        => "Xpresspost USA",
+
+        "INT.XP"        => "Xpresspost International",
         "INT.IP.AIR"    => "International Parcel Air",
         "INT.IP.SURF"   => "International Parcel Surface",
         "INT.PW.ENV"    => "Priority Worldwide Envelope Int'l",
@@ -108,9 +112,7 @@ module ActiveMerchant
         # get response
         response = ssl_post(endpoint, request_body, headers)
         puts response
-
-        # parse response
-
+        # TODO parse response
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         puts "Error #{e.response.body}"
       rescue MissingCustomerNumberError => e
