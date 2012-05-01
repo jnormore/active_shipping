@@ -31,22 +31,14 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     })
 
     @cp = CanadaPostPWS.new(login)
-    @french_cp = CanadaPostPWS.new(login.merge(:language => 'fr'))
   end
   
-  # def test_real  # actually hit Canada Post API
-  #   pin = "1371134583769924" # valid test #
-  #   
-  #   response = @cp.find_tracking_info(pin, {})
-  #   p response
-  # end
-  # find_tracking_info
 
   def test_find_tracking_info_with_valid_pin
     pin = '1371134583769923'
-    endpoint = CanadaPostPWS::URL + "vis/track/pin/%s/detail" % pin
-    @response = xml_fixture('canadapost_pws/tracking_details_en')
-    @cp.expects(:ssl_get).with(endpoint, anything).returns(@response)
+    endpoint = @cp.endpoint + "vis/track/pin/%s/detail" % pin
+    response = xml_fixture('canadapost_pws/tracking_details_en')
+    @cp.expects(:ssl_get).with(endpoint, anything).returns(response)
   
     response = @cp.find_tracking_info(pin)
     assert response.is_a?(CPPWSTrackingResponse)  
@@ -54,9 +46,9 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   
   def test_find_tracking_info_with_15_digit_dnc
     dnc = "315052413796541"
-    endpoint = CanadaPostPWS::URL + "vis/track/dnc/%s/detail" % dnc
-    @response = xml_fixture('canadapost_pws/dnc_tracking_details_en')
-    @cp.expects(:ssl_get).with(endpoint, anything).returns(@response)
+    endpoint = @cp.endpoint + "vis/track/dnc/%s/detail" % dnc
+    response = xml_fixture('canadapost_pws/dnc_tracking_details_en')
+    @cp.expects(:ssl_get).with(endpoint, anything).returns(response)
   
     response = @cp.find_tracking_info(dnc)
     assert response.is_a?(CPPWSTrackingResponse)
@@ -64,16 +56,14 @@ class CanadaPostPwsTest < Test::Unit::TestCase
   
   def test_find_tracking_info_when_pin_doesnt_exist
     pin = '1371134583769924'
-    body = xml_fixture('canadapost_pws/tracking_details_en_error')
-    
-    CPPWSTrackingResponse.any_instance.stubs(:body).returns(body)
-    @cp.expects(:ssl_get).raises(ActiveMerchant::Shipping::ResponseError)
-    ActiveMerchant::Shipping::ResponseError.any_instance.expects(:response).returns(mock(:body => body))
-    @cp.expects(:parse_tracking_error_response).raises(ActiveMerchant::Shipping::ResponseError)
+    response = xml_fixture('canadapost_pws/tracking_details_en_error')
+    @cp.expects(:ssl_get).returns(response)
     
     exception = assert_raises ActiveMerchant::Shipping::ResponseError do
       @cp.find_tracking_info(pin)
     end
+
+    assert_equal "No Pin History", exception.message
   end
   
   def test_find_tracking_info_with_invalid_pin_format
@@ -125,16 +115,4 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     ordered = timestamps.dup.sort.reverse # newest => oldest
     assert_equal ordered, timestamps
   end
-
-  # parse_error_response
-
-  def test_parse_tracking_error_response
-    body = xml_fixture('canadapost_pws/tracking_details_en_error')
-    exception = assert_raises ActiveMerchant::Shipping::ResponseError do
-      @cp.send(:parse_tracking_error_response, body)
-    end
-    assert_equal "No Pin History", exception.message
-  end
-
-
 end

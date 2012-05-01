@@ -19,7 +19,7 @@ class CanadaPostPwsTest < Test::Unit::TestCase
       :city        => 'Ottawa', 
       :province    => 'ON', 
       :country     => 'CA', 
-      :postal_code => 'K1P1J1',
+      :postal_code => 'K1P 1J1',
       :phone       => '613-555-1212'
     }
 
