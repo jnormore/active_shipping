@@ -362,7 +362,7 @@ module ActiveMerchant
       end
 
       def quote_type_node(options)
-        XmlNode.new("quote-type", 'commerical')
+        XmlNode.new("quote-type", 'commercial')
       end
 
       def parcel_node(line_items, options ={})
