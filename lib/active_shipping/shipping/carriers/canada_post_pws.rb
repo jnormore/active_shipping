@@ -108,6 +108,8 @@ module ActiveMerchant
         # get response
         response = ssl_post(url, request_body, headers)
         puts response
+
+        parse_shipment_request(response, origin, destination)
         # TODO parse response
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         puts "Error #{e.response.body}"
@@ -119,7 +121,7 @@ module ActiveMerchant
         # future
       end
 
-      def regenerate_label(label_id, options = {})
+      def retrieve_label(label_id, options = {})
         # future
       end
 
@@ -216,28 +218,41 @@ module ActiveMerchant
 
       def build_shipment_request(origin, destination, line_items = [], options = {})
         xml = XmlNode.new('shipment', :xmlns => "http://www.canadapost.ca/ws/shipment") do |root_node|
-          # group-id
-          root_node << build_groupid_node(options)
-          root_node << XmlNode.new('requested-shipping-point', origin.postal_code)
-          root_node << XmlNode.new('delivery-spec') do |spec|
-            spec << XmlNode.new('service-code', options[:service])
-            spec << build_location_node('sender', origin)
-            spec << build_location_node('destination', destination)
-            spec << build_parcel_characteristics(line_items)
-            #spec << build_shipping_options(options)
-            #spec << build_notification_options(options)
-            spec << build_print_preference_options(options)
-            spec << build_shipping_preference_options(options)
-            #spec << build_shipping_references(options)
-            #spec << build_customs_options(options)
-              # skulist
-            spec << build_settlement_info(options)        
+          root_node << XmlNode.new('delivery-spec') do |node|
+            node << shipment_service_code_node(options)
+            node << shipment_sender_node(origin, options)
+            node << shipment_destination_node(destination, options)
+            node << shipment_options_node(options)
+            node << parcel_node(line_items)
+            node << shipment_notification_node(options)
+            node << shipment_preferences_node(options)
+            node << references_node(options)             # optional > user defined custom notes
+            node << shipment_customs_node(destination, line_items, options)
+            # COD Remittance defaults to sender
           end
-          # TODO: return-spec
-          # TODO: return-recipient
-
         end
         xml.to_s
+          # group-id
+        #   root_node << build_groupid_node(options)
+        #   root_node << XmlNode.new('requested-shipping-point', origin.postal_code)
+        #   root_node << XmlNode.new('delivery-spec') do |spec|
+        #     spec << XmlNode.new('service-code', options[:service])
+        #     spec << build_location_node('sender', origin)
+        #     spec << build_location_node('destination', destination)
+        #     spec << build_parcel_characteristics(line_items)
+        #     #spec << build_shipping_options(options)
+        #     #spec << build_notification_options(options)
+        #     spec << build_print_preference_options(options)
+        #     spec << build_shipping_preference_options(options)
+        #     #spec << build_shipping_references(options)
+        #     #spec << build_customs_options(options)
+        #       # skulist
+        #     spec << build_settlement_info(options)        
+        #   end
+        #   # TODO: return-spec
+        #   # TODO: return-recipient
+
+        # end
       end
 
       def build_groupid_node(options)
