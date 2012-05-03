@@ -39,6 +39,8 @@ module ActiveMerchant
         'fr' => 'fr-CA'
       }
       
+      SHIPPING_OPTIONS = [:cod, :cod_amount, :insurance, :insurance_amount, :signature_required, :pa18, :pa19, :hfp, :dns, :lad]
+
       attr_accessor :language, :endpoint, :logger
 
       def initialize(options = {})
@@ -216,7 +218,17 @@ module ActiveMerchant
 
       # shipping
 
-      def build_shipment_request(origin, destination, line_items = [], options = {})
+      # options
+      # :service => 'DOM.EP'
+      # :notification_email
+      # :packing_instructions
+      # :show_postage_rate
+      # :cod, :cod_amount, :insurance, :insurance_amount, :signature_required, :pa18, :pa19, :hfp, :dns, :lad
+      # 
+      def build_shipment_request(origin_hash, destination_hash, line_items = [], options = {})
+        origin = Location.new(sanitize_zip(origin_hash))
+        destination = Location.new(sanitize_zip(destination_hash))
+
         xml = XmlNode.new('shipment', :xmlns => "http://www.canadapost.ca/ws/shipment") do |root_node|
           root_node << XmlNode.new('delivery-spec') do |node|
             node << shipment_service_code_node(options)
@@ -227,104 +239,131 @@ module ActiveMerchant
             node << shipment_notification_node(options)
             node << shipment_preferences_node(options)
             node << references_node(options)             # optional > user defined custom notes
-            node << shipment_customs_node(destination, line_items, options)
+            #node << shipment_customs_node(destination, line_items, options)
             # COD Remittance defaults to sender
           end
         end
         xml.to_s
-          # group-id
-        #   root_node << build_groupid_node(options)
-        #   root_node << XmlNode.new('requested-shipping-point', origin.postal_code)
-        #   root_node << XmlNode.new('delivery-spec') do |spec|
-        #     spec << XmlNode.new('service-code', options[:service])
-        #     spec << build_location_node('sender', origin)
-        #     spec << build_location_node('destination', destination)
-        #     spec << build_parcel_characteristics(line_items)
-        #     #spec << build_shipping_options(options)
-        #     #spec << build_notification_options(options)
-        #     spec << build_print_preference_options(options)
-        #     spec << build_shipping_preference_options(options)
-        #     #spec << build_shipping_references(options)
-        #     #spec << build_customs_options(options)
-        #       # skulist
-        #     spec << build_settlement_info(options)        
-        #   end
-        #   # TODO: return-spec
-        #   # TODO: return-recipient
+      end
 
+      def shipment_service_code_node(options)
+        XmlNode.new('service-code', options[:service])
+      end
+
+      def shipment_sender_node(location, options)
+        XmlNode.new('sender') do |node|
+          node << XmlNode.new('company', location.company || location.name)
+          node << XmlNode.new('contact-phone', location.phone)
+          node << XmlNode.new('address-details') do |innernode|
+            innernode << XmlNode.new('address-line-1', location.address1)
+            innernode << XmlNode.new('address-line-2', [location.address2, location.address3].reject(&:blank?).join(", ")) 
+            innernode << XmlNode.new('city', location.city)
+            innernode << XmlNode.new('prov-state', location.province)     
+            innernode << XmlNode.new('country-code', location.country_code)
+            innernode << XmlNode.new('postal-zip-code', location.postal_code)
+          end
+        end
+      end
+
+      def shipment_destination_node(location, options)
+        XmlNode.new('destination') do |node|
+          node << XmlNode.new('company', location.company || location.name)
+          node << XmlNode.new('client-voice-number', location.phone)
+          node << XmlNode.new('address-details') do |innernode|
+            innernode << XmlNode.new('address-line-1', location.address1)
+            innernode << XmlNode.new('address-line-2', [location.address2, location.address3].reject(&:blank?).join(", ")) 
+            innernode << XmlNode.new('city', location.city)
+            innernode << XmlNode.new('prov-state', location.province)
+            innernode << XmlNode.new('country-code', location.country_code)
+            innernode << XmlNode.new('postal-zip-code', location.postal_code)
+          end
+        end
+      end
+
+      def shipment_options_node(options)        
+        return if (options.keys & SHIPPING_OPTIONS).empty?
+        XmlNode.new('options') do |el|
+          if options[:cod] && options[:cod_amount]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'COD')
+              opt << XmlNode.new('option-amount', options[:cod_amount])
+              opt << XmlNode.new('option-qualifier-1', true)  # COD amount includes shipping
+              opt << XmlNode.new('option-qualifier-1', 'CSH') # COD payment (CSH, CHQ, MOCC)
+            end
+          end
+
+          if options[:insurance] && options[:insurance_amount]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'COV')
+              opt << XmlNode.new('option-amount', options[:insurance_amount])
+            end
+          end
+
+          if options[:signature_required]
+            el << XmlNode.new('option') do |opt|
+              opt << XmlNode.new('option-code', 'SO')
+            end
+          end
+
+          [:pa18, :pa19, :hfp, :dns, :lad].each do |code|
+            if options[code]
+              el << XmlNode.new('option') do |opt|
+                opt << XmlNode.new('option-code', code.to_s.upcase)
+              end
+            end
+          end
+        end
+      end
+
+      def shipment_notification_node(options)
+        return unless options[:notification_email]
+        XmlNode.new('notification') do |node|
+          node << XmlNode.new('email', options[:notification_email])
+          node << XmlNode.new('on-shipment', true)
+          node << XmlNode.new('on-exception', true)
+          node << XmlNode.new('on-delivery', true)
+        end
+      end
+
+      def shipment_preferences_node(options)
+        XmlNode.new('preferences') do |node|
+          node << XmlNode.new('show-packing-instructions', options[:packing_instructions] || true)
+          node << XmlNode.new('show-postage-rate', options[:show_postage_rate] || false)          
+          node << XmlNode.new('show-insured-value', true)
+        end
+      end
+
+      def references_node(options)
+        # custom values
+        # XmlNode.new('references') do |node|
         # end
       end
 
-      def build_groupid_node(options)
-        # need to generate a unique group id (based on date-merchant?)
-        XmlNode.new('group-id', 'test')
-      end
-
-      def build_shipping_options(options)
-        XmlNode.new('options') do |xml|
-          # to do
-        end
-      end
-
-      def build_notification_options(options)
-        return unless options[:notification_email]
-        XmlNode.new('notification') do |xml|
-          xml << XmlNode.new('email', options[:notification_email])
-          xml << XmlNode.new('on-shipment', true)
-          xml << XmlNode.new('on-shipment', true)
-          xml << XmlNode.new('on-shipment', true)
-        end
-      end
-
-      def build_print_preference_options(options)
-        XmlNode.new('print-preferences') do |node|
-          node << XmlNode.new('output-format', 'paper')
-          node << XmlNode.new('encoding', 'PDF')
-        end
-      end
-
-      def build_shipping_preference_options(options)
-        XmlNode.new('preferences') do |xml|
-          xml << XmlNode.new('show-packing-instructions', true)
-          xml << XmlNode.new('show-postage-rate', true)
-          xml << XmlNode.new('show-insured-value', true)
-        end
-      end
-
-      def build_shipping_references(options)
-        # todo
-      end
-
-      def build_customs_options(options)
-        # todo
-      end
-
-
-      def build_location_node(label, location)
-        XmlNode.new(label) do |xml|
-          xml << XmlNode.new('name', location.name)
-          if label == 'sender'
-            xml << XmlNode.new('company', location.company || location.name)
-          else
-            xml << XmlNode.new('company', location.company) if location.company
+      def shipment_customs_node(destination, line_items, options)
+        XmlNode.new('customs') do |node|
+          currency = case destination.country_code
+            when 'CA' then "CAD"
+            when 'US' then "USD"
+            else destination.country_code
           end
-          xml << XmlNode.new('contact-phone', location.phone) if label == 'sender'
-          xml << XmlNode.new('address-details') do |addr|
-            addr << XmlNode.new('address-line-1', location.address1)
-            addr << XmlNode.new('address-line-2', [location.address2, location.address3].join(", ")) if !location.address2.blank? || !location.address3.blank?
-            addr << XmlNode.new('city', location.city)
-            addr << XmlNode.new('prov-state', location.province)
-            addr << XmlNode.new("country-code", location.country_code)
-            addr << XmlNode.new('postal-zip-code', location.postal_code)
+          node << XmlNode.new('currency',currency)
+          node << XmlNode.new('conversion-from-cad','1.0')
+          node << XmlNode.new('reason-for-export','SOG')
+          node << XmlNode.new('other-reason','')
+          node << XmlNode.new('additional-customs-info','')
+          node << XmlNode.new('sku-list') do |sku|
+            line_items.each do |line_item|
+              node << XmlNode.new('item') do |item|
+                # item << XmlNode.new('hs-tariff-code', '1234.12.12.12') (optional)
+                # item << XmlNode.new('sku', 'some-value') (optional)
+                item << XmlNode.new('customs-description', 'item')
+                item << XmlNode.new('unit-weight', line_item.kilograms)
+                item << XmlNode.new('customs-value-per-unit', line_item.value) # TODO
+                item << XmlNode.new('customs-number-of-units', 1) # TODO
+              end
+            end
           end
-        end
-      end
-
-      def build_settlement_info(options)
-        XmlNode.new('settlement-info') do |xml|
-          # defaults to mailed-on-behalf-of
-          xml << XmlNode.new('contract-id', options[:customer_number])
-          xml << XmlNode.new('intended-method-of-payment', 'Account')  # need support for CC
+          
         end
       end
 
@@ -407,6 +446,7 @@ module ActiveMerchant
       end
 
       def shipping_options_node(options = {})
+        return if (options.keys & SHIPPING_OPTIONS).empty?
         XmlNode.new('options') do |el|
           if options[:cod] && options[:cod_amount]
             el << XmlNode.new('option') do |opt|
