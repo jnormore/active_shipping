@@ -24,6 +24,7 @@ class CanadaPostPWSTest < Test::Unit::TestCase
     @dom_params = {
       :name        => "John Smith Sr.", 
       :company     => "",
+      :phone       => '123-123-1234',
       :address1    => "5500 Oak Ave",
       :city        => 'Vancouver', 
       :province    => 'BC', 
@@ -33,6 +34,7 @@ class CanadaPostPWSTest < Test::Unit::TestCase
 
     @dest_params = {
       :name     => "Frank White",
+      :phone    => '123-123-1234',
       :address1 => '999 Wiltshire Blvd',
       :city     => 'Beverly Hills', 
       :state    => 'CA', 
@@ -63,17 +65,11 @@ class CanadaPostPWSTest < Test::Unit::TestCase
   end
 
   def test_create_shipment
-    opts = {:customer_number => "0008035576", :service => "DOM.EP"}
+    opts = {:customer_number => "0008035576", :service => "DOM.XP"}
     
-    response = @cp.create_label(@home_params, @dest_params, [@pkg1], opts)
+    response = @cp.create_label(@home_params, @dom_params, [@pkg1], opts)
 
     p response
   end
 
-  # def test_shipment
-    
-  #   puts response
-  # end
-
-  
 end

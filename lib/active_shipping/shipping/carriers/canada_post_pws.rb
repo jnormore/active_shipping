@@ -96,7 +96,7 @@ module ActiveMerchant
       def create_label(origin, destination, line_items = [], options = {})
         raise MissingCustomerNumberError unless customer_number = options[:customer_number]
 
-        url = endpoint + "rs/#{customer_number}/#{customer_number}/shipment"
+        url = endpoint + "rs/#{customer_number}/ncshipment"
         headers = {
           'Accept'          => "application/vnd.cpc.shipment+xml",
           'Content-Type'    => "application/vnd.cpc.shipment+xml",
@@ -229,7 +229,7 @@ module ActiveMerchant
         origin = Location.new(sanitize_zip(origin_hash))
         destination = Location.new(sanitize_zip(destination_hash))
 
-        xml = XmlNode.new('shipment', :xmlns => "http://www.canadapost.ca/ws/shipment") do |root_node|
+        xml = XmlNode.new('non-contract-shipment', :xmlns => "http://www.canadapost.ca/ws/ncshipment") do |root_node|
           root_node << XmlNode.new('delivery-spec') do |node|
             node << shipment_service_code_node(options)
             node << shipment_sender_node(origin, options)
@@ -239,7 +239,7 @@ module ActiveMerchant
             node << shipment_notification_node(options)
             node << shipment_preferences_node(options)
             node << references_node(options)             # optional > user defined custom notes
-            #node << shipment_customs_node(destination, line_items, options)
+            node << shipment_customs_node(destination, line_items, options)
             # COD Remittance defaults to sender
           end
         end
@@ -252,14 +252,16 @@ module ActiveMerchant
 
       def shipment_sender_node(location, options)
         XmlNode.new('sender') do |node|
-          node << XmlNode.new('company', location.company || location.name)
+          node << XmlNode.new('name', location.name)
+          node << XmlNode.new('company', location.company) if location.company.present?
           node << XmlNode.new('contact-phone', location.phone)
           node << XmlNode.new('address-details') do |innernode|
             innernode << XmlNode.new('address-line-1', location.address1)
-            innernode << XmlNode.new('address-line-2', [location.address2, location.address3].reject(&:blank?).join(", ")) 
+            address2 = [location.address2, location.address3].reject(&:blank?).join(", ")
+            innernode << XmlNode.new('address-line-2', address2) unless address2.blank?
             innernode << XmlNode.new('city', location.city)
             innernode << XmlNode.new('prov-state', location.province)     
-            innernode << XmlNode.new('country-code', location.country_code)
+            #innernode << XmlNode.new('country-code', location.country_code)
             innernode << XmlNode.new('postal-zip-code', location.postal_code)
           end
         end
@@ -267,11 +269,13 @@ module ActiveMerchant
 
       def shipment_destination_node(location, options)
         XmlNode.new('destination') do |node|
-          node << XmlNode.new('company', location.company || location.name)
+          node << XmlNode.new('name', location.name)
+          node << XmlNode.new('company', location.company) if location.company.present?
           node << XmlNode.new('client-voice-number', location.phone)
           node << XmlNode.new('address-details') do |innernode|
             innernode << XmlNode.new('address-line-1', location.address1)
-            innernode << XmlNode.new('address-line-2', [location.address2, location.address3].reject(&:blank?).join(", ")) 
+            address2 = [location.address2, location.address3].reject(&:blank?).join(", ")
+            innernode << XmlNode.new('address-line-2', address2) unless address2.blank?
             innernode << XmlNode.new('city', location.city)
             innernode << XmlNode.new('prov-state', location.province)
             innernode << XmlNode.new('country-code', location.country_code)
@@ -340,6 +344,8 @@ module ActiveMerchant
       end
 
       def shipment_customs_node(destination, line_items, options)
+        return unless destination.country_code != 'CA'
+
         XmlNode.new('customs') do |node|
           currency = case destination.country_code
             when 'CA' then "CAD"
@@ -348,9 +354,9 @@ module ActiveMerchant
           end
           node << XmlNode.new('currency',currency)
           node << XmlNode.new('conversion-from-cad','1.0')
-          node << XmlNode.new('reason-for-export','SOG')
-          node << XmlNode.new('other-reason','')
-          node << XmlNode.new('additional-customs-info','')
+          node << XmlNode.new('reason-for-export','GIF') #TODO
+          # node << XmlNode.new('other-reason','')  # don't include if blank
+          # node << XmlNode.new('additional-customs-info','')  # don't include if blank
           node << XmlNode.new('sku-list') do |sku|
             line_items.each do |line_item|
               node << XmlNode.new('item') do |item|
@@ -408,9 +414,9 @@ module ActiveMerchant
         weight = line_items.sum(&:kilograms).to_f
         XmlNode.new('parcel-characteristics') do |el|
           el << XmlNode.new('weight', "%#2.3f" % weight)
-          el << XmlNode.new('mailing-tube', true) if line_items.any?(&:tube?)
+          el << XmlNode.new('mailing-tube', line_items.any?(&:tube?))
           el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
-          el << XmlNode.new('unpackaged', true) if line_items.any?(&:unpackaged?)
+          el << XmlNode.new('unpackaged', line_items.any?(&:unpackaged?))
         end
       end
 
