@@ -49,13 +49,13 @@ class CanadaPostPwsTest < Test::Unit::TestCase
     @cp = CanadaPostPWS.new(login)
 
   end
-
+  
   # create shipment
   # create shipment to US
   # create shipment international
   # create shipment with options
   # create shipment to us with options
-  
+
 
   # build_location_node
 

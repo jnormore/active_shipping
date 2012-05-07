@@ -66,8 +66,7 @@ class CanadaPostPWSTest < Test::Unit::TestCase
 
   def test_create_shipment
     opts = {:customer_number => "0008035576", :service => "DOM.XP"}
-    
-    response = @cp.create_label(@home_params, @dom_params, [@pkg1], opts)
+    response = @cp.create_shipment(@home_params, @dom_params, [@pkg1], opts)
 
     p response
   end

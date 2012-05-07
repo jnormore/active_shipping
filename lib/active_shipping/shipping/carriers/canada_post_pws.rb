@@ -61,9 +61,8 @@ module ActiveMerchant
           'Authorization'   => encoded_authorization,
           'Accept-Language' => language
         }
-        
         request  = build_rates_request(origin, destination, line_items, options)
-        response = ssl_post(url, request, headers)
+        response = ssl_post(url, x, headers)
         parse_rates_response(response, origin, destination)
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         error_response(response, RateResponse)
@@ -93,7 +92,7 @@ module ActiveMerchant
         CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {})
       end
       
-      def create_label(origin, destination, line_items = [], options = {})
+      def create_shipment(origin, destination, line_items = [], options = {})
         raise MissingCustomerNumberError unless customer_number = options[:customer_number]
 
         url = endpoint + "rs/#{customer_number}/ncshipment"
@@ -106,7 +105,8 @@ module ActiveMerchant
 
         # build shipment request
         request_body = build_shipment_request(origin, destination, line_items, options)
-        
+        #request_body = '<non-contract-shipment xmlns="http://www.canadapost.ca/ws/ncshipment"><delivery-spec><service-code>USA.XP</service-code><sender><name>asdf</name><company>asdf</company><contact-phone>555-555-5555</contact-phone><address-details><address-line-1>asdf</address-line-1><city>asdf</city><prov-state>ON</prov-state><postal-zip-code>K1A1A1</postal-zip-code></address-details></sender><destination><client-voice-number>555-555-5555</client-voice-number><address-details><address-line-1>asdf</address-line-1><city>asdf</city><prov-state>CA</prov-state><country-code>US</country-code><postal-zip-code>90210</postal-zip-code></address-details></destination><options><option><option-code>DC</option-code></option><option><option-code>SO</option-code></option><option><option-code>RASE</option-code></option></options><parcel-characteristics><weight>1</weight><dimensions><length>25</length><width>25</width><height>15</height></dimensions><document>false</document><unpackaged>false</unpackaged><mailing-tube>false</mailing-tube></parcel-characteristics><preferences><show-packing-instructions>false</show-packing-instructions><show-postage-rate>false</show-postage-rate><show-insured-value>false</show-insured-value></preferences><customs><currency>cad</currency><conversion-from-cad>1</conversion-from-cad><reason-for-export>GIF</reason-for-export><other-reason></other-reason><additional-customs-info></additional-customs-info><sku-list><item><hs-tariff-code>4403.20.00.15</hs-tariff-code><sku>123</sku><customs-description>Wood Post</customs-description><unit-weight>1</unit-weight><customs-value-per-unit>10</customs-value-per-unit><customs-number-of-units>1</customs-number-of-units><country-of-origin>CA</country-of-origin><province-of-origin>ON</province-of-origin></item></sku-list></customs></delivery-spec></non-contract-shipment>'
+
         # get response
         response = ssl_post(url, request_body, headers)
         puts response
@@ -119,7 +119,7 @@ module ActiveMerchant
         p "Error #{e}"
       end
       
-      def cancel_label(label_id, options = {})
+      def cancel_shipment(label_id, options = {})
         # future
       end
 
