@@ -62,7 +62,7 @@ module ActiveMerchant
           'Accept-Language' => language
         }
         request  = build_rates_request(origin, destination, line_items, options)
-        response = ssl_post(url, x, headers)
+        response = ssl_post(url, request, headers)
         parse_rates_response(response, origin, destination)
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         error_response(response, RateResponse)
@@ -97,20 +97,17 @@ module ActiveMerchant
 
         url = endpoint + "rs/#{customer_number}/ncshipment"
         headers = {
-          'Accept'          => "application/vnd.cpc.shipment+xml",
-          'Content-Type'    => "application/vnd.cpc.shipment+xml",
+          'Accept'          => "application/vnd.cpc.ncshipment+xml",
+          'Content-Type'    => "application/vnd.cpc.ncshipment+xml",
           'Authorization'   => encoded_authorization,
           'Accept-language' => language          
         }
 
         # build shipment request
         request_body = build_shipment_request(origin, destination, line_items, options)
-        #request_body = '<non-contract-shipment xmlns="http://www.canadapost.ca/ws/ncshipment"><delivery-spec><service-code>USA.XP</service-code><sender><name>asdf</name><company>asdf</company><contact-phone>555-555-5555</contact-phone><address-details><address-line-1>asdf</address-line-1><city>asdf</city><prov-state>ON</prov-state><postal-zip-code>K1A1A1</postal-zip-code></address-details></sender><destination><client-voice-number>555-555-5555</client-voice-number><address-details><address-line-1>asdf</address-line-1><city>asdf</city><prov-state>CA</prov-state><country-code>US</country-code><postal-zip-code>90210</postal-zip-code></address-details></destination><options><option><option-code>DC</option-code></option><option><option-code>SO</option-code></option><option><option-code>RASE</option-code></option></options><parcel-characteristics><weight>1</weight><dimensions><length>25</length><width>25</width><height>15</height></dimensions><document>false</document><unpackaged>false</unpackaged><mailing-tube>false</mailing-tube></parcel-characteristics><preferences><show-packing-instructions>false</show-packing-instructions><show-postage-rate>false</show-postage-rate><show-insured-value>false</show-insured-value></preferences><customs><currency>cad</currency><conversion-from-cad>1</conversion-from-cad><reason-for-export>GIF</reason-for-export><other-reason></other-reason><additional-customs-info></additional-customs-info><sku-list><item><hs-tariff-code>4403.20.00.15</hs-tariff-code><sku>123</sku><customs-description>Wood Post</customs-description><unit-weight>1</unit-weight><customs-value-per-unit>10</customs-value-per-unit><customs-number-of-units>1</customs-number-of-units><country-of-origin>CA</country-of-origin><province-of-origin>ON</province-of-origin></item></sku-list></customs></delivery-spec></non-contract-shipment>'
-
         # get response
         response = ssl_post(url, request_body, headers)
-        puts response
-
+        
         parse_shipment_request(response, origin, destination)
         # TODO parse response
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
@@ -136,7 +133,6 @@ module ActiveMerchant
       # rating
 
       def build_rates_request(origin, destination, line_items = [], options = {})
-        #log("origin: #{origin.inspect} dest: #{destination.inspect} items: #{line_items.inspect} opts: #{options.inspect}")
         xml =  XmlNode.new('mailing-scenario', :xmlns => "http://www.canadapost.ca/ws/ship/rate") do |node|
           node << customer_number_node(options)
           node << contract_id_node(options)
@@ -269,7 +265,7 @@ module ActiveMerchant
 
       def shipment_destination_node(location, options)
         XmlNode.new('destination') do |node|
-          node << XmlNode.new('name', location.name)
+         # node << XmlNode.new('name', location.name)
           node << XmlNode.new('company', location.company) if location.company.present?
           node << XmlNode.new('client-voice-number', location.phone)
           node << XmlNode.new('address-details') do |innernode|
@@ -284,39 +280,51 @@ module ActiveMerchant
         end
       end
 
-      def shipment_options_node(options)        
-        return if (options.keys & SHIPPING_OPTIONS).empty?
+      def shipment_options_node(options)
         XmlNode.new('options') do |el|
-          if options[:cod] && options[:cod_amount]
-            el << XmlNode.new('option') do |opt|
-              opt << XmlNode.new('option-code', 'COD')
-              opt << XmlNode.new('option-amount', options[:cod_amount])
-              opt << XmlNode.new('option-qualifier-1', true)  # COD amount includes shipping
-              opt << XmlNode.new('option-qualifier-1', 'CSH') # COD payment (CSH, CHQ, MOCC)
-            end
+          el << XmlNode.new('option') do |opt|
+            opt << XmlNode.new('option-code', 'DC')
           end
-
-          if options[:insurance] && options[:insurance_amount]
-            el << XmlNode.new('option') do |opt|
-              opt << XmlNode.new('option-code', 'COV')
-              opt << XmlNode.new('option-amount', options[:insurance_amount])
-            end
+          el << XmlNode.new('option') do |opt|
+            opt << XmlNode.new('option-code', 'SO')
           end
-
-          if options[:signature_required]
-            el << XmlNode.new('option') do |opt|
-              opt << XmlNode.new('option-code', 'SO')
-            end
-          end
-
-          [:pa18, :pa19, :hfp, :dns, :lad].each do |code|
-            if options[code]
-              el << XmlNode.new('option') do |opt|
-                opt << XmlNode.new('option-code', code.to_s.upcase)
-              end
-            end
+          el << XmlNode.new('option') do |opt|
+            opt << XmlNode.new('option-code', 'RASE')
           end
         end
+
+        # return if (options.keys & SHIPPING_OPTIONS).empty?
+        # XmlNode.new('options') do |el|
+        #   if options[:cod] && options[:cod_amount]
+        #     el << XmlNode.new('option') do |opt|
+        #       opt << XmlNode.new('option-code', 'COD')
+        #       opt << XmlNode.new('option-amount', options[:cod_amount])
+        #       opt << XmlNode.new('option-qualifier-1', true)  # COD amount includes shipping
+        #       opt << XmlNode.new('option-qualifier-1', 'CSH') # COD payment (CSH, CHQ, MOCC)
+        #     end
+        #   end
+
+        #   if options[:insurance] && options[:insurance_amount]
+        #     el << XmlNode.new('option') do |opt|
+        #       opt << XmlNode.new('option-code', 'COV')
+        #       opt << XmlNode.new('option-amount', options[:insurance_amount])
+        #     end
+        #   end
+
+        #   if options[:signature_required]
+        #     el << XmlNode.new('option') do |opt|
+        #       opt << XmlNode.new('option-code', 'SO')
+        #     end
+        #   end
+
+        #   [:pa18, :pa19, :hfp, :dns, :lad].each do |code|
+        #     if options[code]
+        #       el << XmlNode.new('option') do |opt|
+        #         opt << XmlNode.new('option-code', code.to_s.upcase)
+        #       end
+        #     end
+        #   end
+        # end
       end
 
       def shipment_notification_node(options)
@@ -353,18 +361,18 @@ module ActiveMerchant
             else destination.country_code
           end
           node << XmlNode.new('currency',currency)
-          node << XmlNode.new('conversion-from-cad','1.0')
+          node << XmlNode.new('conversion-from-cad','1')
           node << XmlNode.new('reason-for-export','GIF') #TODO
           # node << XmlNode.new('other-reason','')  # don't include if blank
           # node << XmlNode.new('additional-customs-info','')  # don't include if blank
           node << XmlNode.new('sku-list') do |sku|
             line_items.each do |line_item|
-              node << XmlNode.new('item') do |item|
-                # item << XmlNode.new('hs-tariff-code', '1234.12.12.12') (optional)
-                # item << XmlNode.new('sku', 'some-value') (optional)
-                item << XmlNode.new('customs-description', 'item')
+              sku << XmlNode.new('item') do |item|
+                item << XmlNode.new('hs-tariff-code', '1234.12.12.12') #(optional)
+                item << XmlNode.new('sku', 'some-value') #(optional)
+                item << XmlNode.new('customs-description', 'Wood Post')
                 item << XmlNode.new('unit-weight', line_item.kilograms)
-                item << XmlNode.new('customs-value-per-unit', line_item.value) # TODO
+                item << XmlNode.new('customs-value-per-unit', line_item.value / 10) # TODO
                 item << XmlNode.new('customs-number-of-units', 1) # TODO
               end
             end
@@ -374,7 +382,10 @@ module ActiveMerchant
       end
 
 
-      def parse_shipping_response(response)
+
+
+      def parse_shipment_request(response)
+        response
       end
 
       def parse_shipping_error_response(body)
@@ -414,8 +425,14 @@ module ActiveMerchant
         weight = line_items.sum(&:kilograms).to_f
         XmlNode.new('parcel-characteristics') do |el|
           el << XmlNode.new('weight', "%#2.3f" % weight)
+          el << XmlNode.new('dimensions') do |dim|
+            dim << XmlNode.new('length', 25)
+            dim << XmlNode.new('width', 25)
+            dim << XmlNode.new('height', 25)
+          end
+          el << XmlNode.new('document', false)
           el << XmlNode.new('mailing-tube', line_items.any?(&:tube?))
-          el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
+          #el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
           el << XmlNode.new('unpackaged', line_items.any?(&:unpackaged?))
         end
       end

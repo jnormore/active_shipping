@@ -7,7 +7,7 @@ class CanadaPostPWSTest < Test::Unit::TestCase
     login = fixtures(:canada_post_pws)
     
     # 100 grams, 93 cm long, 10 cm diameter, cylinders have different volume calculations
-    @pkg1 = Package.new(25, [93,10], :value => 10.00)
+    @pkg1 = Package.new(1000, [93,10], :value => 10.00)
 
     @home_params = {
       :name        => "John Smith", 
@@ -65,8 +65,8 @@ class CanadaPostPWSTest < Test::Unit::TestCase
   end
 
   def test_create_shipment
-    opts = {:customer_number => "0008035576", :service => "DOM.XP"}
-    response = @cp.create_shipment(@home_params, @dom_params, [@pkg1], opts)
+    opts = {:customer_number => "0008035576", :service => "USA.XP"}
+    response = @cp.create_shipment(@home_params, @dest_params, [@pkg1], opts)
 
     p response
   end
