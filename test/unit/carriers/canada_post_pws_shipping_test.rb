@@ -1,6 +1,6 @@
 require 'test_helper'
 require 'pp'
-class CanadaPostPwsTest < Test::Unit::TestCase
+class CanadaPostPwsShippingTest < Test::Unit::TestCase
 
   def setup
     login = fixtures(:canada_post_pws)
@@ -64,8 +64,6 @@ class CanadaPostPwsTest < Test::Unit::TestCase
                        :cod_method_of_payment => 'CSH', :insurance => true, :insurance_amount => 100.00, 
                        :signature_required => true, :pa18 => true}
 
-    @cp = CanadaPostPWS.new(login)
-
     @default_options = {:customer_number => '123456'}
 
     @DEFAULT_RESPONSE = {
@@ -73,6 +71,8 @@ class CanadaPostPwsTest < Test::Unit::TestCase
       :tracking_number => "11111118901234",
       :label_url => "https://ct.soa-gw.canadapost.ca/ers/artifact/c70da5ed5a0d2c32/20238/0"
     }
+
+    @cp = CanadaPostPWS.new(login)
   end
 
   def test_build_shipment_customs_node

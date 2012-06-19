@@ -1,6 +1,6 @@
 require 'test_helper'
 require 'pp'
-class CanadaPostPwsTest < Test::Unit::TestCase
+class CanadaPostPwsTrackingTest < Test::Unit::TestCase
 
   def setup
     login = fixtures(:canada_post_pws)

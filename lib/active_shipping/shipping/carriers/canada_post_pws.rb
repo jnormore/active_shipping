@@ -86,7 +86,7 @@ module ActiveMerchant
       rescue ActiveMerchant::ResponseError, ActiveMerchant::Shipping::ResponseError => e
         error_response(response, CPPWSTrackingResponse)
       rescue InvalidPinFormatError => e
-        CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {})
+        CPPWSTrackingResponse.new(false, "Invalid Pin Format", {}, {:carrier => @@name})
       end
       
       def create_shipment(origin, destination, package, line_items = [], options = {})
@@ -174,6 +174,7 @@ module ActiveMerchant
         destination      = Location.new(:postal_code => dest_postal_code)
         origin           = Location.new({})        
         options = {
+          :carrier                 => @@name,
           :service_name            => root_node.get_text('service-name').to_s,
           :expected_date           => Date.parse(expected_date),
           :changed_date            => change_date.blank? ? nil : Date.parse(change_date),
@@ -336,7 +337,7 @@ module ActiveMerchant
         XmlNode.new('parcel-characteristics') do |el|
           el << XmlNode.new('weight', "%#2.3f" % weight)
           pkg_dim = package.cm
-          if pkg_dim
+          if pkg_dim && !pkg_dim.select{|x| x != 0}.empty?
             el << XmlNode.new('dimensions') do |dim|
               dim << XmlNode.new('length', pkg_dim[2]) if pkg_dim.size >= 3
               dim << XmlNode.new('width', pkg_dim[1]) if pkg_dim.size >= 2
@@ -345,7 +346,7 @@ module ActiveMerchant
           end
           el << XmlNode.new('document', false)
           el << XmlNode.new('mailing-tube', package.tube?)
-          #el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
+          el << XmlNode.new('oversized', true) if package.oversized?
           el << XmlNode.new('unpackaged', package.unpackaged?)
         end
       end
@@ -364,14 +365,11 @@ module ActiveMerchant
         CPPWSShippingResponse.new(true, "", {}, options)
       end
 
-      def parse_shipping_error_response(body)
-      end
-
       def error_response(response, response_klass)
         doc = REXML::Document.new(response)
         messages = doc.elements['messages'].elements.collect('message') {|node| node }
         message = messages.map {|message| message.get_text('description').to_s }.join(", ")
-        response_klass.new(false, message, {}, {})
+        response_klass.new(false, message, {}, {:carrier => @@name})
       end
 
       def log(msg)
@@ -387,7 +385,7 @@ module ActiveMerchant
       def headers(accept = nil, content_type = nil)
         headers = {
           'Authorization'   => encoded_authorization,
-          'Accept-language' => language          
+          'Accept-Language' => language          
         }
         headers['Accept'] = accept if accept
         headers['Content-Type'] = content_type if content_type
@@ -410,14 +408,15 @@ module ActiveMerchant
         weight = line_items.sum(&:kilograms).to_f
         XmlNode.new('parcel-characteristics') do |el|
           el << XmlNode.new('weight', "%#2.3f" % weight)
-          el << XmlNode.new('dimensions') do |dim|
-            dim << XmlNode.new('length', 25)
-            dim << XmlNode.new('width', 25)
-            dim << XmlNode.new('height', 25)
-          end
-          el << XmlNode.new('document', false)
+          # currently not provided, and not required for rating
+          # el << XmlNode.new('dimensions') do |dim|
+          #   dim << XmlNode.new('length', 25)
+          #   dim << XmlNode.new('width', 25)
+          #   dim << XmlNode.new('height', 25)
+          # end
+          # el << XmlNode.new('document', false)
           el << XmlNode.new('mailing-tube', line_items.any?(&:tube?))
-          #el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
+          el << XmlNode.new('oversized', true) if line_items.any?(&:oversized?)
           el << XmlNode.new('unpackaged', line_items.any?(&:unpackaged?))
         end
       end
